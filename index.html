@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ff6600">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23ff6600'/%3E%3Cpath d='M18 14h8l6 13 6-13h8L36 34v16h-8V34z' fill='white'/%3E%3C/svg%3E">
+    <title>Premii - Hacker News</title>
+    <script>
+      (function () {
+        var fonts = {
+          source: '"Source Sans 3", "Source Sans Pro", system-ui, sans-serif',
+          noto: '"Noto Sans JP", system-ui, sans-serif',
+          slab: '"Roboto Slab", Georgia, serif',
+          open: '"Open Sans", system-ui, sans-serif',
+          default: "system-ui, sans-serif"
+        };
+        var defaults = {
+          font: "source",
+          fontSize: 15,
+          theme: "light",
+          accent: "#ff6600",
+          splitView: true,
+          layout: "fixed",
+          navigation: "top",
+          animation: true
+        };
+        function mixHex(first, second, secondWeight) {
+          var colors = [first, second].map(function (hex) {
+            var value = hex.replace("#", "");
+            return [
+              parseInt(value.slice(0, 2), 16),
+              parseInt(value.slice(2, 4), 16),
+              parseInt(value.slice(4, 6), 16)
+            ];
+          });
+          return "#" + colors[0].map(function (channel, index) {
+            return Math.round(channel * (1 - secondWeight) + colors[1][index] * secondWeight)
+              .toString(16)
+              .padStart(2, "0");
+          }).join("");
+        }
+        try {
+          var saved = JSON.parse(localStorage.getItem("premii:prefs") || "{}");
+          var prefs = Object.assign(defaults, saved);
+          if (!Object.prototype.hasOwnProperty.call(fonts, prefs.font)) prefs.font = "source";
+          if (![13, 14, 15, 16, 17, 18, 19, 21, 23].includes(Number(prefs.fontSize))) {
+            prefs.fontSize = 15;
+          }
+          if (!["light", "dark", "auto", "system"].includes(prefs.theme)) prefs.theme = "light";
+          if (typeof prefs.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(prefs.accent)) {
+            prefs.accent = "#ff6600";
+          }
+          if (typeof prefs.splitView !== "boolean") prefs.splitView = true;
+          if (!["flexible", "fixed"].includes(prefs.layout)) prefs.layout = "fixed";
+          if (!["top", "bottom"].includes(prefs.navigation)) prefs.navigation = "top";
+          if (typeof prefs.animation !== "boolean") prefs.animation = true;
+          var dark = prefs.theme === "dark" ||
+            ((prefs.theme === "auto" || prefs.theme === "system") &&
+              matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.style.setProperty("--font-family", fonts[prefs.font]);
+          document.documentElement.style.setProperty("--font-size", Number(prefs.fontSize) + "px");
+          document.documentElement.style.setProperty("--accent", prefs.accent);
+          document.documentElement.style.setProperty(
+            "--accent-soft",
+            mixHex(prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.78 : 0.9)
+          );
+          document.documentElement.style.setProperty(
+            "--accent-faint",
+            mixHex(prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.93 : 0.98)
+          );
+          document.documentElement.classList.add(dark ? "theme-dark" : "theme-light");
+          if (prefs.splitView) document.documentElement.classList.add("split-enabled");
+          if (prefs.layout === "fixed") document.documentElement.classList.add("layout-fixed");
+          if (prefs.navigation === "bottom") document.documentElement.classList.add("nav-bottom");
+          if (!prefs.animation) document.documentElement.classList.add("no-motion");
+          document.querySelector('meta[name="theme-color"]').content = prefs.accent;
+        } catch (_) {
+          document.documentElement.classList.add("theme-light", "split-enabled");
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;600&family=Open+Sans:wght@300;400;600&family=Roboto+Slab:wght@300;400;600&family=Source+Sans+3:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="api.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-menu" viewBox="0 0 24 24">
+        <path d="M4 6h16M4 12h16M4 18h16"/>
+      </symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24">
+        <circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.2 9A7 7 0 0 0 6.4 6.4L4 9m16 6-2.4 2.6A7 7 0 0 1 5.8 15"/>
+      </symbol>
+      <symbol id="icon-more" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="1.5" class="filled"/><circle cx="12" cy="12" r="1.5" class="filled"/><circle cx="12" cy="19" r="1.5" class="filled"/>
+      </symbol>
+      <symbol id="icon-back" viewBox="0 0 24 24">
+        <path d="m15 5-7 7 7 7"/>
+      </symbol>
+      <symbol id="icon-comment" viewBox="0 0 24 24">
+        <path d="M5 4.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>
+      </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>
+      </symbol>
+      <symbol id="icon-external" viewBox="0 0 24 24">
+        <path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/>
+      </symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24">
+        <path d="m6 6 12 12M18 6 6 18"/>
+      </symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24">
+        <path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/>
+      </symbol>
+      <symbol id="icon-share" viewBox="0 0 24 24">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.6 6.6-4.2M8.7 13.4l6.6 4.2"/>
+      </symbol>
+    </svg>
+
+    <div class="fixed-layout-band" aria-hidden="true"></div>
+    <main id="app" class="app-shell route-feed" aria-busy="true">
+      <section id="list-pane" class="pane list-pane" aria-label="Stories"></section>
+      <section id="detail-pane" class="pane detail-pane" aria-label="Details"></section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <noscript>This app requires JavaScript to load Hacker News.</noscript>
+  </body>
+</html>
