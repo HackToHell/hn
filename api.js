@@ -3,6 +3,7 @@
 
   var BASE = "https://hn.algolia.com/api/v1";
   var HITS_PER_PAGE = 30;
+  var MAX_CACHE_ENTRIES = 120;
   var responseCache = new Map();
 
   function ApiError(code, message, details) {
@@ -110,10 +111,35 @@
     return BASE + "/" + (spec.endpoint || "search") + "?" + params.toString();
   }
 
-  async function fetchJson(url, options) {
-    var forceRefresh = options && options.forceRefresh;
-    if (!forceRefresh && responseCache.has(url)) return responseCache.get(url);
+  function cacheGet(url) {
+    // Re-insert to mark most-recently-used (Map preserves insertion order).
+    var value = responseCache.get(url);
+    responseCache.delete(url);
+    responseCache.set(url, value);
+    return value;
+  }
 
+  function cacheSet(url, value) {
+    responseCache.set(url, value);
+    while (responseCache.size > MAX_CACHE_ENTRIES) {
+      responseCache.delete(responseCache.keys().next().value);
+    }
+  }
+
+  function fetchJson(url, options) {
+    var forceRefresh = options && options.forceRefresh;
+    if (!forceRefresh && responseCache.has(url)) return cacheGet(url);
+    // Cache the in-flight promise so concurrent identical requests share one call.
+    var pending = requestJson(url, forceRefresh);
+    cacheSet(url, pending);
+    pending.catch(function () {
+      // Don't cache failures: drop so a later request can retry.
+      if (responseCache.get(url) === pending) responseCache.delete(url);
+    });
+    return pending;
+  }
+
+  async function requestJson(url, forceRefresh) {
     var response;
     var controller = typeof AbortController === "function" ? new AbortController() : null;
     var timeout = controller
@@ -164,7 +190,6 @@
       });
     }
 
-    responseCache.set(url, data);
     return data;
   }
 
@@ -251,9 +276,10 @@
   }
 
   async function fetchFeed(feedId, options) {
-    var spec = FEEDS[feedId];
-    if (!spec) throw new ApiError("INVALID_FEED", "Unknown feed: " + feedId);
-    return runSearch(spec, options || {});
+    if (!Object.prototype.hasOwnProperty.call(FEEDS, feedId)) {
+      throw new ApiError("INVALID_FEED", "Unknown feed: " + feedId);
+    }
+    return runSearch(FEEDS[feedId], options || {});
   }
 
   async function fetchSubmitted(username, options) {
@@ -275,6 +301,7 @@
   }
 
   async function searchStories(query, options) {
+    var opts = options || {};
     var value = String(query || "").trim();
     if (!value) {
       return {
@@ -287,12 +314,13 @@
         query: ""
       };
     }
+    var tags = opts.author ? "story,author_" + checkedUsername(opts.author) : "story";
     return runSearch({
       endpoint: "search",
       query: value,
-      tags: "story",
+      tags: tags,
       kind: "story"
-    }, options || {});
+    }, opts);
   }
 
   async function getItem(id, options) {

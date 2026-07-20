@@ -7,28 +7,17 @@
     <meta name="theme-color" content="#ff6600">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23ff6600'/%3E%3Cpath d='M18 14h8l6 13 6-13h8L36 34v16h-8V34z' fill='white'/%3E%3C/svg%3E">
     <title>Premii - Hacker News</title>
+    <!-- Shared appearance config: single source of truth for both the pre-paint
+         script below and app.js (consumed as window.PREMII). Keep additions here,
+         not duplicated in app.js. -->
     <script>
-      (function () {
-        var fonts = {
-          source: '"Source Sans 3", "Source Sans Pro", system-ui, sans-serif',
-          noto: '"Noto Sans JP", system-ui, sans-serif',
-          slab: '"Roboto Slab", Georgia, serif',
-          open: '"Open Sans", system-ui, sans-serif',
-          default: "system-ui, sans-serif"
-        };
-        var defaults = {
-          font: "source",
-          fontSize: 15,
-          theme: "light",
-          accent: "#ff6600",
-          splitView: true,
-          layout: "fixed",
-          navigation: "top",
-          animation: true
-        };
+      window.PREMII = (function () {
         function mixHex(first, second, secondWeight) {
           var colors = [first, second].map(function (hex) {
             var value = hex.replace("#", "");
+            if (value.length === 3) {
+              value = value.split("").map(function (c) { return c + c; }).join("");
+            }
             return [
               parseInt(value.slice(0, 2), 16),
               parseInt(value.slice(2, 4), 16),
@@ -41,43 +30,76 @@
               .padStart(2, "0");
           }).join("");
         }
+        return {
+          FONT_CHOICES: {
+            source: '"Source Sans 3", "Source Sans Pro", system-ui, sans-serif',
+            noto: '"Noto Sans JP", system-ui, sans-serif',
+            slab: '"Roboto Slab", Georgia, serif',
+            open: '"Open Sans", system-ui, sans-serif',
+            default: "system-ui, sans-serif"
+          },
+          DEFAULT_PREFS: {
+            font: "source",
+            fontSize: 15,
+            theme: "light",
+            accent: "#ff6600",
+            layout: "fixed",
+            animation: true,
+            navigation: "top",
+            splitView: true,
+            openInFrame: false
+          },
+          FONT_SIZES: [13, 14, 15, 16, 17, 18, 19, 21, 23],
+          THEMES: ["light", "dark", "auto", "system"],
+          LAYOUTS: ["flexible", "fixed"],
+          NAVIGATION: ["top", "bottom"],
+          mixHex: mixHex,
+          accentVars: function (accent, dark) {
+            return {
+              soft: mixHex(accent, dark ? "#000000" : "#ffffff", dark ? 0.78 : 0.9),
+              faint: mixHex(accent, dark ? "#000000" : "#ffffff", dark ? 0.93 : 0.98)
+            };
+          },
+          isDark: function (theme) {
+            return theme === "dark" ||
+              ((theme === "auto" || theme === "system") &&
+                matchMedia("(prefers-color-scheme: dark)").matches);
+          }
+        };
+      })();
+    </script>
+    <script>
+      (function () {
+        var CONFIG = window.PREMII;
+        var root = document.documentElement;
         try {
           var saved = JSON.parse(localStorage.getItem("premii:prefs") || "{}");
-          var prefs = Object.assign(defaults, saved);
-          if (!Object.prototype.hasOwnProperty.call(fonts, prefs.font)) prefs.font = "source";
-          if (![13, 14, 15, 16, 17, 18, 19, 21, 23].includes(Number(prefs.fontSize))) {
-            prefs.fontSize = 15;
-          }
-          if (!["light", "dark", "auto", "system"].includes(prefs.theme)) prefs.theme = "light";
+          var prefs = Object.assign({}, CONFIG.DEFAULT_PREFS, saved);
+          if (!Object.prototype.hasOwnProperty.call(CONFIG.FONT_CHOICES, prefs.font)) prefs.font = "source";
+          if (CONFIG.FONT_SIZES.indexOf(Number(prefs.fontSize)) === -1) prefs.fontSize = 15;
+          if (CONFIG.THEMES.indexOf(prefs.theme) === -1) prefs.theme = "light";
           if (typeof prefs.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(prefs.accent)) {
             prefs.accent = "#ff6600";
           }
           if (typeof prefs.splitView !== "boolean") prefs.splitView = true;
-          if (!["flexible", "fixed"].includes(prefs.layout)) prefs.layout = "fixed";
-          if (!["top", "bottom"].includes(prefs.navigation)) prefs.navigation = "top";
+          if (CONFIG.LAYOUTS.indexOf(prefs.layout) === -1) prefs.layout = "fixed";
+          if (CONFIG.NAVIGATION.indexOf(prefs.navigation) === -1) prefs.navigation = "top";
           if (typeof prefs.animation !== "boolean") prefs.animation = true;
-          var dark = prefs.theme === "dark" ||
-            ((prefs.theme === "auto" || prefs.theme === "system") &&
-              matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.style.setProperty("--font-family", fonts[prefs.font]);
-          document.documentElement.style.setProperty("--font-size", Number(prefs.fontSize) + "px");
-          document.documentElement.style.setProperty("--accent", prefs.accent);
-          document.documentElement.style.setProperty(
-            "--accent-soft",
-            mixHex(prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.78 : 0.9)
-          );
-          document.documentElement.style.setProperty(
-            "--accent-faint",
-            mixHex(prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.93 : 0.98)
-          );
-          document.documentElement.classList.add(dark ? "theme-dark" : "theme-light");
-          if (prefs.splitView) document.documentElement.classList.add("split-enabled");
-          if (prefs.layout === "fixed") document.documentElement.classList.add("layout-fixed");
-          if (prefs.navigation === "bottom") document.documentElement.classList.add("nav-bottom");
-          if (!prefs.animation) document.documentElement.classList.add("no-motion");
+          var dark = CONFIG.isDark(prefs.theme);
+          var accent = CONFIG.accentVars(prefs.accent, dark);
+          root.style.setProperty("--font-family", CONFIG.FONT_CHOICES[prefs.font]);
+          root.style.setProperty("--font-size", Number(prefs.fontSize) + "px");
+          root.style.setProperty("--accent", prefs.accent);
+          root.style.setProperty("--accent-soft", accent.soft);
+          root.style.setProperty("--accent-faint", accent.faint);
+          root.classList.add(dark ? "theme-dark" : "theme-light");
+          if (prefs.splitView) root.classList.add("split-enabled");
+          if (prefs.layout === "fixed") root.classList.add("layout-fixed");
+          if (prefs.navigation === "bottom") root.classList.add("nav-bottom");
+          if (!prefs.animation) root.classList.add("no-motion");
           document.querySelector('meta[name="theme-color"]').content = prefs.accent;
         } catch (_) {
-          document.documentElement.classList.add("theme-light", "split-enabled");
+          root.classList.add("theme-light", "split-enabled");
         }
       })();
     </script>

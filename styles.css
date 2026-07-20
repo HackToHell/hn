@@ -659,16 +659,6 @@ svg {
   border: 0.5px solid var(--line-strong);
 }
 
-.comments-help {
-  margin: 0;
-  padding: 7px 15px;
-  border-bottom: 0.5px solid var(--line);
-  color: var(--muted);
-  font-size: 0.8rem;
-  text-align: right;
-  background: var(--accent-faint);
-}
-
 .comment {
   border-bottom: 0.5px solid var(--line);
   background: var(--page);
@@ -1027,6 +1017,58 @@ svg {
   display: none;
 }
 
+.frame-page-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.frame-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 0.5px solid var(--line);
+  background: var(--surface);
+}
+
+.frame-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.frame-open {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 0.5px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text);
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.frame-open:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.frame-body {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
 .page-footer {
   padding: 8px 12px;
   border-top: 0.5px solid var(--line);
@@ -1099,18 +1141,9 @@ svg {
   .split-enabled .route-detail .detail-pane .header-title {
     padding-left: 15px;
   }
-
-  .comments-help {
-    display: block;
-  }
 }
 
 @media (max-width: 767px) {
-  .comments-help {
-    padding-inline: 12px;
-    text-align: center;
-  }
-
   .article-meta {
     padding: 15px;
   }

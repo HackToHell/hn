@@ -28,13 +28,8 @@
     return labels;
   }, {});
 
-  var FONT_CHOICES = {
-    source: '"Source Sans 3", "Source Sans Pro", system-ui, sans-serif',
-    noto: '"Noto Sans JP", system-ui, sans-serif',
-    slab: '"Roboto Slab", Georgia, serif',
-    open: '"Open Sans", system-ui, sans-serif',
-    default: "system-ui, sans-serif"
-  };
+  var CONFIG = window.PREMII;
+  var FONT_CHOICES = CONFIG.FONT_CHOICES;
 
   var ACCENTS = [
     "#ff6600", "#f4511e", "#e53935", "#d81b60", "#c2185b", "#ad1457",
@@ -51,16 +46,7 @@
     "#9b5de5", "#f15bb5"
   ];
 
-  var defaultPrefs = {
-    font: "source",
-    fontSize: 15,
-    theme: "light",
-    accent: "#ff6600",
-    layout: "fixed",
-    animation: true,
-    navigation: "top",
-    splitView: true
-  };
+  var defaultPrefs = CONFIG.DEFAULT_PREFS;
 
   var app = document.getElementById("app");
   var listPane = document.getElementById("list-pane");
@@ -104,17 +90,19 @@
     var source = value && typeof value === "object" ? value : {};
     var prefs = Object.assign({}, defaultPrefs);
     if (Object.prototype.hasOwnProperty.call(FONT_CHOICES, source.font)) prefs.font = source.font;
-    if ([13, 14, 15, 16, 17, 18, 19, 21, 23].indexOf(Number(source.fontSize)) !== -1) {
+    if (CONFIG.FONT_SIZES.indexOf(Number(source.fontSize)) !== -1) {
       prefs.fontSize = Number(source.fontSize);
     }
-    if (["light", "dark", "auto", "system"].indexOf(source.theme) !== -1) prefs.theme = source.theme;
+    if (CONFIG.THEMES.indexOf(source.theme) !== -1) prefs.theme = source.theme;
+    if (prefs.theme === "system") prefs.theme = "auto";
     if (typeof source.accent === "string" && /^#[0-9a-f]{6}$/i.test(source.accent)) {
       prefs.accent = source.accent;
     }
-    if (["flexible", "fixed"].indexOf(source.layout) !== -1) prefs.layout = source.layout;
+    if (CONFIG.LAYOUTS.indexOf(source.layout) !== -1) prefs.layout = source.layout;
     if (typeof source.animation === "boolean") prefs.animation = source.animation;
-    if (["top", "bottom"].indexOf(source.navigation) !== -1) prefs.navigation = source.navigation;
+    if (CONFIG.NAVIGATION.indexOf(source.navigation) !== -1) prefs.navigation = source.navigation;
     if (typeof source.splitView === "boolean") prefs.splitView = source.splitView;
+    if (typeof source.openInFrame === "boolean") prefs.openInFrame = source.openInFrame;
     return prefs;
   }
 
@@ -152,35 +140,16 @@
       '<use href="#icon-' + name + '"></use></svg>';
   }
 
-  function mixHex(first, second, secondWeight) {
-    function rgb(hex) {
-      var value = hex.replace("#", "");
-      if (value.length === 3) {
-        value = value.split("").map(function (char) { return char + char; }).join("");
-      }
-      return [
-        parseInt(value.slice(0, 2), 16),
-        parseInt(value.slice(2, 4), 16),
-        parseInt(value.slice(4, 6), 16)
-      ];
-    }
-    var a = rgb(first);
-    var b = rgb(second);
-    return "#" + a.map(function (channel, index) {
-      var value = Math.round(channel * (1 - secondWeight) + b[index] * secondWeight);
-      return value.toString(16).padStart(2, "0");
-    }).join("");
-  }
-
   function resolvedDarkTheme() {
     return state.prefs.theme === "dark" ||
-      ((state.prefs.theme === "auto" || state.prefs.theme === "system") &&
+      (state.prefs.theme === "auto" &&
         window.matchMedia("(prefers-color-scheme: dark)").matches);
   }
 
   function applyPrefs() {
     var root = document.documentElement;
     var dark = resolvedDarkTheme();
+    var accent = CONFIG.accentVars(state.prefs.accent, dark);
     root.classList.toggle("theme-dark", dark);
     root.classList.toggle("theme-light", !dark);
     root.classList.toggle("split-enabled", Boolean(state.prefs.splitView));
@@ -190,14 +159,8 @@
     root.style.setProperty("--font-family", FONT_CHOICES[state.prefs.font] || FONT_CHOICES.source);
     root.style.setProperty("--font-size", Number(state.prefs.fontSize || 15) + "px");
     root.style.setProperty("--accent", state.prefs.accent);
-    root.style.setProperty(
-      "--accent-soft",
-      mixHex(state.prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.78 : 0.9)
-    );
-    root.style.setProperty(
-      "--accent-faint",
-      mixHex(state.prefs.accent, dark ? "#000000" : "#ffffff", dark ? 0.93 : 0.98)
-    );
+    root.style.setProperty("--accent-soft", accent.soft);
+    root.style.setProperty("--accent-faint", accent.faint);
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = state.prefs.accent;
   }
@@ -215,13 +178,17 @@
       if (parts[1] === "history" && (parts[2] === "comments" || parts[2] === "articles")) {
         return { kind: "feed", feedId: "history", historyType: parts[2] };
       }
-      if (FEED_LABELS[parts[1]]) {
+      if (Object.prototype.hasOwnProperty.call(FEED_LABELS, parts[1])) {
         return { kind: "feed", feedId: parts[1] };
       }
       return { kind: "invalid" };
     }
     if (parts[0] === "comments" && /^\d+$/.test(parts[1] || "")) {
       return { kind: "comments", id: Number(parts[1]) };
+    }
+    if (parts[0] === "read" && parts[1]) {
+      var readUrl = safeExternalUrl(parts[1]);
+      return readUrl ? { kind: "read", url: readUrl } : { kind: "invalid" };
     }
     if (parts[0] === "profile" && parts[1]) {
       if (parts[2] === "comments") {
@@ -246,7 +213,8 @@
       route.user || "",
       route.historyType || "",
       route.id || "",
-      route.tab || ""
+      route.tab || "",
+      route.url || ""
     ].join(":");
   }
 
@@ -387,56 +355,98 @@
     return "news.ycombinator.com";
   }
 
+  var VISITED_LIMIT = 200;
+  var visitedIndex = { ids: new Set(), urls: new Set() };
+
+  function normalizeVisitedEntry(entry, type, cutoff) {
+    if (!entry || typeof entry !== "object") return null;
+    var id = Number(entry.id);
+    var ts = Number(entry.ts);
+    if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(ts) || ts < cutoff) return null;
+    var url = entry.url ? safeExternalUrl(entry.url) : null;
+    if (type === "articles" && !url) return null;
+    return {
+      id: id,
+      title: String(entry.title || "(untitled)"),
+      url: url,
+      author: typeof entry.author === "string" ? entry.author : null,
+      points: Number(entry.points || 0),
+      numComments: Number(entry.numComments || 0),
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : null,
+      ts: ts
+    };
+  }
+
   function pruneVisited(visited) {
     var source = visited && typeof visited === "object" ? visited : {};
     var cutoff = Date.now() - THIRTY_DAYS;
-    function normalize(entry, type) {
-      if (!entry || typeof entry !== "object") return null;
-      var id = Number(entry.id);
-      var ts = Number(entry.ts);
-      if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(ts) || ts < cutoff) return null;
-      var url = entry.url ? safeExternalUrl(entry.url) : null;
-      if (type === "articles" && !url) return null;
-      return {
-        id: id,
-        title: String(entry.title || "(untitled)"),
-        url: url,
-        author: typeof entry.author === "string" ? entry.author : null,
-        points: Number(entry.points || 0),
-        numComments: Number(entry.numComments || 0),
-        createdAt: typeof entry.createdAt === "string" ? entry.createdAt : null,
-        ts: ts
-      };
+    function normalizeList(list, type) {
+      return (Array.isArray(list) ? list : [])
+        .map(function (item) { return normalizeVisitedEntry(item, type, cutoff); })
+        .filter(Boolean)
+        .slice(0, VISITED_LIMIT);
     }
     return {
-      comments: (Array.isArray(source.comments) ? source.comments : [])
-        .map(function (item) { return normalize(item, "comments"); })
-        .filter(Boolean)
-        .slice(0, 200),
-      articles: (Array.isArray(source.articles) ? source.articles : [])
-        .map(function (item) { return normalize(item, "articles"); })
-        .filter(Boolean)
-        .slice(0, 200)
+      comments: normalizeList(source.comments, "comments"),
+      articles: normalizeList(source.articles, "articles")
     };
+  }
+
+  function rebuildVisitedIndex() {
+    var ids = new Set();
+    var urls = new Set();
+    state.visited.comments.forEach(function (entry) { ids.add(entry.id); });
+    state.visited.articles.forEach(function (entry) {
+      ids.add(entry.id);
+      if (entry.url) urls.add(entry.url);
+    });
+    visitedIndex = { ids: ids, urls: urls };
   }
 
   function addVisited(type, entry) {
     var key = type === "articles" ? "articles" : "comments";
     var identifier = key === "articles" ? "url" : "id";
+    // Normalize only the new entry; the rest of the store is already normalized.
+    var normalized = normalizeVisitedEntry(
+      Object.assign({}, entry, { ts: Date.now() }),
+      key,
+      Date.now() - THIRTY_DAYS
+    );
+    if (!normalized) return;
     var items = state.visited[key].filter(function (item) {
-      return item[identifier] !== entry[identifier];
+      return item[identifier] !== normalized[identifier];
     });
-    items.unshift(Object.assign({}, entry, { ts: Date.now() }));
-    state.visited[key] = items.slice(0, 200);
-    state.visited = pruneVisited(state.visited);
+    items.unshift(normalized);
+    state.visited[key] = items.slice(0, VISITED_LIMIT);
+    rebuildVisitedIndex();
     writeJSON(STORAGE.visited, state.visited);
   }
 
   function isVisited(item) {
-    return state.visited.comments.some(function (entry) { return entry.id === item.id; }) ||
-      state.visited.articles.some(function (entry) {
-        return entry.id === item.id || (item.url && entry.url === item.url);
-      });
+    if (visitedIndex.ids.has(item.id)) return true;
+    var url = safeExternalUrl(item.url);
+    return Boolean(url && visitedIndex.urls.has(url));
+  }
+
+  function markVisitedRows(id, url) {
+    // Toggle the class on affected rows in place instead of rebuilding the list.
+    var links = listPane.querySelectorAll("[data-article]");
+    Array.prototype.forEach.call(links, function (node) {
+      if ((url && node.dataset.url === url) || (id && node.dataset.id === id)) {
+        var row = node.closest(".story-row");
+        if (row) row.classList.add("is-visited");
+      }
+    });
+  }
+
+  function articleDataAttrs(item, url, commentCount) {
+    return ' data-article="true" data-id="' + Number(item.id) +
+      '" data-url="' + escapeHtml(url) +
+      '" data-title="' + escapeHtml(item.title || "") +
+      '" data-author="' + escapeHtml(item.author || "") +
+      '" data-points="' + Number(item.points || 0) +
+      '" data-comments="' + Number(commentCount || 0) +
+      '" data-created-at="' + escapeHtml(item.createdAt || "") + '"';
   }
 
   function renderStoryRow(item) {
@@ -447,12 +457,7 @@
     var external = safeExternalUrl(item.url);
     var titleHref = external || "#/comments/" + id;
     var active = state.route && state.route.kind === "comments" && state.route.id === id;
-    var articleData = external
-      ? ' data-article="true" data-id="' + id + '" data-url="' + escapeHtml(external) +
-        '" data-title="' + escapeHtml(item.title) + '" data-author="' + escapeHtml(item.author || "") +
-        '" data-points="' + points + '" data-comments="' + numComments +
-        '" data-created-at="' + escapeHtml(item.createdAt || "") + '"'
-      : "";
+    var articleData = external ? articleDataAttrs(item, external, numComments) : "";
     var author = item.author
       ? '<a href="#/profile/' + encodeURIComponent(item.author) + '">' + escapeHtml(item.author) + "</a>"
       : "<span>[deleted]</span>";
@@ -515,14 +520,17 @@
   }
 
   function renderCommentFeedRow(item) {
+    var storyId = Number(item.storyId);
+    var hasStory = Number.isInteger(storyId) && storyId > 0;
+    var title = escapeHtml(item.storyTitle);
     var author = item.author
       ? '<a href="#/profile/' + encodeURIComponent(item.author) + '">' + escapeHtml(item.author) + "</a>"
       : "[deleted]";
     return '<li class="comment-feed-row">' +
-      '<h3><a href="#/comments/' + item.storyId + '">' + escapeHtml(item.storyTitle) + "</a></h3>" +
+      "<h3>" + (hasStory ? '<a href="#/comments/' + storyId + '">' + title + "</a>" : title) + "</h3>" +
       '<div class="story-meta">' + author + "<span>" + escapeHtml(relativeTime(item.createdAt)) + "</span></div>" +
       '<div class="comment-excerpt prose">' + (sanitizeHtml(item.text) || "<em>[deleted]</em>") + "</div>" +
-      '<a href="#/comments/' + item.storyId + '">Open discussion</a>' +
+      (hasStory ? '<a href="#/comments/' + storyId + '">Open discussion</a>' : "") +
       "</li>";
   }
 
@@ -607,27 +615,13 @@
   }
 
   function historyItems(type) {
-    if (type === "comments") {
-      return state.visited.comments.map(function (entry) {
-        return {
-          id: entry.id,
-          type: "story",
-          title: entry.title,
-          url: entry.url || null,
-          author: entry.author || null,
-          points: entry.points || 0,
-          numComments: entry.numComments || 0,
-          createdAt: entry.createdAt || new Date(entry.ts).toISOString(),
-          tags: []
-        };
-      });
-    }
-    return state.visited.articles.map(function (entry) {
+    var list = type === "comments" ? state.visited.comments : state.visited.articles;
+    return list.map(function (entry) {
       return {
         id: entry.id,
         type: "story",
         title: entry.title,
-        url: entry.url,
+        url: entry.url || null,
         author: entry.author || null,
         points: entry.points || 0,
         numComments: entry.numComments || 0,
@@ -639,10 +633,10 @@
 
   async function requestFeed(route, page, forceRefresh) {
     if (state.searchQuery) {
-      return HNApi.searchStories(state.searchQuery, {
-        page: page,
-        forceRefresh: forceRefresh
-      });
+      var searchOptions = { page: page, forceRefresh: forceRefresh };
+      // Keep the search scoped to the user when viewing their stories/comments.
+      if (route.user) searchOptions.author = route.user;
+      return HNApi.searchStories(state.searchQuery, searchOptions);
     }
     if (route.kind === "profileComments") {
       return HNApi.fetchUserComments(route.user, { page: page, forceRefresh: forceRefresh });
@@ -654,13 +648,8 @@
       return HNApi.fetchSubmitted(route.user, { page: page, forceRefresh: forceRefresh });
     }
     if (route.feedId === "history") {
-      return {
-        hits: historyItems(route.historyType),
-        page: 0,
-        nbPages: 1,
-        nbHits: historyItems(route.historyType).length,
-        hasMore: false
-      };
+      var items = historyItems(route.historyType);
+      return { hits: items, page: 0, nbPages: 1, nbHits: items.length, hasMore: false };
     }
     return HNApi.fetchFeed(route.feedId, { page: page, forceRefresh: forceRefresh });
   }
@@ -672,20 +661,23 @@
     var preserveScroll = append || Boolean(opts.preserveScroll);
     var page = append && state.currentFeed ? state.currentFeed.page + 1 : 0;
     var label = state.searchQuery ? 'Search: "' + state.searchQuery + '"' : feedLabel(route);
+    // An active search always returns story hits, so render as stories even on a
+    // comments route; only an unsearched profileComments feed uses comment rows.
+    var mode = (!state.searchQuery && route.kind === "profileComments") ? "comments" : "stories";
+    function buildFeed(extra) {
+      return Object.assign({ route: route, label: label, mode: mode }, extra);
+    }
 
     if (append && state.currentFeed) {
       state.currentFeed.loadingMore = true;
       state.currentFeed.appendError = null;
     } else {
-      state.currentFeed = {
+      state.currentFeed = buildFeed({
         status: "loading",
-        route: route,
-        label: label,
-        mode: route.kind === "profileComments" ? "comments" : "stories",
         items: [],
         page: 0,
         hasMore: false
-      };
+      });
     }
     renderListPane(preserveScroll);
     app.setAttribute("aria-busy", "true");
@@ -700,34 +692,28 @@
         seen.add(item.id);
         return true;
       });
-      state.currentFeed = {
+      state.currentFeed = buildFeed({
         status: "ready",
-        route: route,
-        label: label,
-        mode: route.kind === "profileComments" ? "comments" : "stories",
         items: existing.concat(additions),
         page: result.page,
         hasMore: result.hasMore,
         nbHits: result.nbHits,
         loadingMore: false,
         appendError: null
-      };
+      });
     } catch (error) {
       if (token !== state.feedToken) return;
       if (append && state.currentFeed && state.currentFeed.items.length) {
         state.currentFeed.loadingMore = false;
         state.currentFeed.appendError = error;
       } else {
-        state.currentFeed = {
+        state.currentFeed = buildFeed({
           status: "error",
-          route: route,
-          label: label,
-          mode: route.kind === "profileComments" ? "comments" : "stories",
           items: [],
           page: 0,
           hasMore: false,
           error: error
-        };
+        });
       }
     }
     renderListPane(preserveScroll);
@@ -781,12 +767,7 @@
     } else {
       var comments = item.children || [];
       var external = safeExternalUrl(item.url);
-      var articleData = external
-        ? ' data-article="true" data-id="' + item.id + '" data-url="' + escapeHtml(external) +
-          '" data-title="' + escapeHtml(item.title) + '" data-author="' + escapeHtml(item.author || "") +
-          '" data-points="' + Number(item.points || 0) + '" data-comments="' +
-          countDescendants(item) + '" data-created-at="' + escapeHtml(item.createdAt || "") + '"'
-        : "";
+      var articleData = external ? articleDataAttrs(item, external, countDescendants(item)) : "";
       var articleLink = external
         ? '<a class="article-url" href="' + escapeHtml(external) +
           '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"' + articleData + ">" +
@@ -817,8 +798,7 @@
       "</div>" +
       (item.text ? '<div class="self-text prose">' + sanitizeHtml(item.text) + "</div>" : "") +
       (comments.length
-        ? '<p class="comments-help">Select a comment header to collapse its thread.</p>' +
-          '<ul class="comment-tree">' + comments.map(renderCommentNode).join("") + "</ul>"
+        ? '<ul class="comment-tree">' + comments.map(renderCommentNode).join("") + "</ul>"
         : '<div class="state-panel"><h2>No comments yet</h2><p>This discussion is empty.</p></div>');
     }
     return '<div class="page comments-page">' +
@@ -1004,14 +984,13 @@
     ].map(function (font) {
       return prefChoice(font[0], "font", font[1], state.prefs.font);
     }).join("");
-    var sizes = [13, 14, 15, 16, 17, 18, 19, 21, 23].map(function (size) {
+    var sizes = CONFIG.FONT_SIZES.map(function (size) {
       return prefChoice(String(size), "fontSize", size, state.prefs.fontSize);
     }).join("");
     var themes = [
       ["Light", "light"],
       ["Dark", "dark"],
-      ["Auto", "auto"],
-      ["System", "system"]
+      ["Auto", "auto"]
     ].map(function (theme) {
       return prefChoice(theme[0], "theme", theme[1], state.prefs.theme);
     }).join("");
@@ -1043,6 +1022,10 @@
       '<section class="options-section"><h2>Split View</h2><div class="choice-grid">' +
         prefChoice("Enable", "splitView", "true", state.prefs.splitView) +
         prefChoice("Disable", "splitView", "false", state.prefs.splitView) +
+      "</div></section>" +
+      '<section class="options-section"><h2>Open Articles</h2><div class="choice-grid">' +
+        prefChoice("New Tab", "openInFrame", "false", state.prefs.openInFrame) +
+        prefChoice("In-App Reader", "openInFrame", "true", state.prefs.openInFrame) +
       "</div></section>";
   }
 
@@ -1116,7 +1099,8 @@
 
   async function renderRoute(route) {
     var previousKind = state.route && state.route.kind;
-    if ((route.kind === "comments" || route.kind === "profile" || route.kind === "options") &&
+    if ((route.kind === "comments" || route.kind === "profile" ||
+        route.kind === "options" || route.kind === "read") &&
         (previousKind === "feed" || previousKind === "profileComments")) {
       var currentListBody = listPane.querySelector(".page-body");
       if (currentListBody) {
@@ -1143,16 +1127,15 @@
       setRouteClass("route-feed");
       detailPane.innerHTML = placeholderPage();
       document.title = feedLabel(route) + " - Premii";
+      var cameFromDetail = previousKind === "comments" || previousKind === "profile" ||
+        previousKind === "options" || previousKind === "read";
       if (sameFeed && state.currentFeed.status === "ready") {
-        renderListPane(
-          true,
-          previousKind === "comments" || previousKind === "profile" || previousKind === "options"
-        );
+        renderListPane(true, cameFromDetail);
         app.setAttribute("aria-busy", "false");
       } else {
         await loadFeed(route);
       }
-      if (previousKind === "comments" || previousKind === "profile" || previousKind === "options") {
+      if (cameFromDetail) {
         focusPane(listPane);
       }
       return;
@@ -1163,6 +1146,16 @@
       setRouteClass("route-detail");
       ensureLeftFeed();
       await loadComments(route);
+      return;
+    }
+
+    if (route.kind === "read") {
+      state.detailToken += 1;
+      writeJSON(STORAGE.lastRoute, location.hash);
+      setRouteClass("route-detail");
+      ensureLeftFeed();
+      renderArticleFrame(route);
+      app.setAttribute("aria-busy", "false");
       return;
     }
 
@@ -1230,7 +1223,9 @@
   function updatePreference(name, rawValue) {
     var value = rawValue;
     if (name === "fontSize") value = Number(rawValue);
-    if (name === "animation" || name === "splitView") value = rawValue === "true";
+    if (name === "animation" || name === "splitView" || name === "openInFrame") {
+      value = rawValue === "true";
+    }
     state.prefs[name] = value;
     writeJSON(STORAGE.prefs, state.prefs);
     applyPrefs();
@@ -1252,17 +1247,77 @@
     if (!except) state.popoverTrigger = null;
   }
 
-  async function shareApp() {
-    var data = { title: document.title, url: location.href };
+  function frameHostLabel(url) {
     try {
-      if (navigator.share) {
-        await navigator.share(data);
-      } else if (navigator.clipboard) {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch (_) {
+      return "Article";
+    }
+  }
+
+  function renderArticleFrame(route) {
+    var safe = route.url;
+    detailPane.innerHTML = '<div class="page frame-page">' +
+      pageHeader({
+        back: true,
+        title: "Hacker News",
+        subtitle: frameHostLabel(safe)
+      }) +
+      '<div class="page-body frame-page-body">' +
+        '<div class="frame-bar">' +
+          '<span class="frame-title">' + escapeHtml(safe) + "</span>" +
+          '<a class="frame-open" href="' + escapeHtml(safe) +
+            '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">' +
+            icon("external") + "New tab</a>" +
+        "</div>" +
+        '<iframe class="frame-body" title="' + escapeHtml(frameHostLabel(safe)) +
+          '" src="' + escapeHtml(safe) + '" referrerpolicy="no-referrer" ' +
+          'sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>' +
+      "</div>" +
+      "</div>";
+    document.title = frameHostLabel(safe) + " - Premii";
+    focusPane(detailPane);
+  }
+
+  function legacyCopy(text) {
+    try {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      var ok = typeof document.execCommand === "function" && document.execCommand("copy");
+      document.body.removeChild(area);
+      return Boolean(ok);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function shareApp() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: document.title, url: location.href });
+      } catch (_) {
+        // User dismissed the share sheet or it failed; stay silent.
+      }
+      return;
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(location.href);
         showToast("Link copied.");
+        return;
       }
     } catch (_) {
-      return;
+      // Clipboard API blocked (e.g. insecure context); fall through to legacy copy.
+    }
+    if (legacyCopy(location.href)) {
+      showToast("Link copied.");
+    } else {
+      showToast("Copy this link: " + location.href);
     }
   }
 
@@ -1280,7 +1335,12 @@
         numComments: Number(article.dataset.comments || 0),
         createdAt: article.dataset.createdAt || null
       });
-      if (state.currentFeed) renderListPane(true);
+      markVisitedRows(article.dataset.id, article.dataset.url);
+      if (state.prefs.openInFrame && article.dataset.url && !event.metaKey &&
+          !event.ctrlKey && !event.shiftKey && event.button === 0) {
+        event.preventDefault();
+        location.hash = "#/read/" + encodeURIComponent(article.dataset.url);
+      }
     }
 
     if (!actionTarget) {
@@ -1410,6 +1470,7 @@
   document.addEventListener("submit", function (event) {
     if (event.target.matches(".search-form")) {
       event.preventDefault();
+      if (!state.currentFeed) return;
       var query = new FormData(event.target).get("query").trim();
       state.searchQuery = query;
       loadFeed(state.currentFeed.route);
@@ -1452,16 +1513,17 @@
       location.hash = tabs[next].getAttribute("href");
       return;
     }
+    var active = document.activeElement;
     if (event.key === "/" && !event.metaKey && !event.ctrlKey &&
-        !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+        !(active && /INPUT|TEXTAREA|SELECT/.test(active.tagName))) {
       event.preventDefault();
       var searchButton = document.querySelector('[data-action="search-toggle"]');
       if (searchButton) searchButton.click();
     }
     if ((event.key === "Enter" || event.key === " ") &&
-        document.activeElement.classList.contains("comment-meta")) {
+        active && active.classList.contains("comment-meta")) {
       event.preventDefault();
-      document.activeElement.click();
+      active.click();
     }
   });
 
@@ -1470,10 +1532,11 @@
   });
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
-    if (state.prefs.theme === "auto" || state.prefs.theme === "system") applyPrefs();
+    if (state.prefs.theme === "auto") applyPrefs();
   });
 
   applyPrefs();
+  rebuildVisitedIndex();
   writeJSON(STORAGE.visited, state.visited);
 
   var storedHash = readJSON(STORAGE.lastRoute, DEFAULT_HASH);
